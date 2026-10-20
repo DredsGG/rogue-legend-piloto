@@ -1,0 +1,44 @@
+name: Release
+
+# Publish a GitHub Release whose tag is vX.Y.Z (same as VERSAO in
+# rl_piloto.py). This job builds the ready-to-run zip and attaches it.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Check that the tag matches VERSAO
+        run: |
+          CODE="$(grep -oP '^VERSAO\s*=\s*"\K[^"]+' rl_piloto.py)"
+          if [ "${TAG#v}" != "$CODE" ]; then
+            echo "::error::Tag $TAG does not match VERSAO $CODE"; exit 1
+          fi
+
+      - name: Build zip
+        run: zip -r "rogue-legend-piloto-$TAG.zip" . -x '.git/*' '.github/*' 'docs/*' '.gitignore'
+
+      - name: Attach zip and run notes
+        env:
+          NOTES: |
+            ### Run
+            1. Download **rogue-legend-piloto-${{ github.event.release.tag_name }}.zip** below and unzip it anywhere.
+            2. Open Rogue Legend in Google Play Games (PC) and leave it on the home screen.
+            3. Double-click `RODAR.bat`. The first run installs Python 3.12 and the dependencies (1–4 min).
+        run: |
+          gh release upload "$TAG" "rogue-legend-piloto-$TAG.zip" --clobber
+          gh release view "$TAG" --json body -q .body > old.md
+          { printf '%s\n\n' "$NOTES"; cat old.md; } > notes.md
+          gh release edit "$TAG" --notes-file notes.md
